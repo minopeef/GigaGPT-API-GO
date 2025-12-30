@@ -107,11 +107,14 @@ func (g *GenerativeModel) Generate(ctx context.Context, message []Message) (*Com
 		return nil, fmt.Errorf("invalid model parameters: %w", err)
 	}
 
-	finalMessages := make([]Message, 0, len(message)+1)
+	var finalMessages []Message
 	if g.SystemInstruction != "" {
+		finalMessages = make([]Message, 0, len(message)+1)
 		finalMessages = append(finalMessages, Message{Role: RoleSystem, Content: g.SystemInstruction})
+		finalMessages = append(finalMessages, message...)
+	} else {
+		finalMessages = message
 	}
-	finalMessages = append(finalMessages, message...)
 
 	payload := payload{
 		Model:             g.fullName,
@@ -129,15 +132,15 @@ func (g *GenerativeModel) Generate(ctx context.Context, message []Message) (*Com
 
 	var resp *http.Response
 
-	for i := 0; i < 2; i++ {
+	for attempt := 0; attempt < 2; attempt++ {
 		var token string
 		g.c.mu.RLock()
 		token = g.c.accessToken.AccessToken
 		g.c.mu.RUnlock()
 
-		req, err := http.NewRequestWithContext(ctx, "POST", g.c.baseURLAI, bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", g.c.baseURLAI, bytes.NewReader(jsonData))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
 		req.Header.Set("Content-Type", "application/json")
@@ -146,21 +149,20 @@ func (g *GenerativeModel) Generate(ctx context.Context, message []Message) (*Com
 
 		resp, err = g.c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("request failed: %w", err)
 		}
 
 		if resp.StatusCode != http.StatusUnauthorized {
 			break
 		}
 
-		if i == 1 {
-			break
-		}
-
 		resp.Body.Close()
+		resp = nil
 
-		if err := g.c.refreshToken(ctx); err != nil {
-			return nil, fmt.Errorf("failed to refresh token after 401: %w", err)
+		if attempt == 0 {
+			if err := g.c.refreshToken(ctx); err != nil {
+				return nil, fmt.Errorf("failed to refresh token after 401: %w", err)
+			}
 		}
 	}
 

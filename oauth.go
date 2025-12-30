@@ -20,8 +20,9 @@ type tokenResponse struct {
 func (c *Client) oauthCreate(ctx context.Context) (*tokenResponse, error) {
 	data := url.Values{}
 	data.Set("scope", c.scope)
+	body := data.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURLOauth, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURLOauth, strings.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

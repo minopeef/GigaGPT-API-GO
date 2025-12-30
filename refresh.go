@@ -21,12 +21,9 @@ const (
 // for requests that might take time to complete.
 // The expire_at timestamp is expected to be in Unix milliseconds.
 func (c *Client) isValid(expire_at int64, now time.Time) bool {
-	nowMs := now.UnixNano() / int64(time.Millisecond)
-
+	nowMs := now.UnixMilli()
 	remaining := expire_at - nowMs
-
 	fifteenMinutesMs := int64(tokenRefreshBuffer / time.Millisecond)
-
 	return remaining > fifteenMinutesMs
 }
 
@@ -73,6 +70,9 @@ func (c *Client) refreshToken(ctx context.Context) error {
 	c.refreshMu.Lock()
 	if c.refreshing {
 		ch := make(chan error, 1)
+		if c.refreshWaiters == nil {
+			c.refreshWaiters = make([]chan error, 0, 4)
+		}
 		c.refreshWaiters = append(c.refreshWaiters, ch)
 		c.refreshMu.Unlock()
 		return <-ch
